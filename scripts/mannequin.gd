@@ -52,6 +52,7 @@ var _pend_part: RigidBody3D = null
 var _pend_impulse := Vector3.ZERO
 var _settle_t := 0.0
 var _getup_from: Array[Transform3D] = []
+var _ragdoll_t := 0.0
 var _getup_targets: Array = []
 var _getup_root := Transform3D.IDENTITY
 var _getup_seg := 0
@@ -342,6 +343,7 @@ func activate() -> void:
 		return
 	state = RAGDOLL
 	_settle_t = 0.0
+	_ragdoll_t = 0.0
 	_punch_t = -1.0
 	_flinch_t = 0.0
 	for p in parts:
@@ -444,11 +446,13 @@ func _tick_ragdoll(player: Node3D) -> void:
 		_settle_t += get_physics_process_delta_time()
 	else:
 		_settle_t = 0.0
+	_ragdoll_t += get_physics_process_delta_time()
+	# запасной таймер: даже если части не успокоились полностью, манекен встаёт через несколько секунд
 	var can_get_up := false
 	if kind == AGGRESSIVE:
-		can_get_up = _settle_t > 2.5
+		can_get_up = _settle_t > 2.5 or _ragdoll_t > 5.0
 	elif player != null:
-		can_get_up = _settle_t > 0.8 and _flat_to(player).length() < 4.0
+		can_get_up = (_settle_t > 0.8 or _ragdoll_t > 3.0) and _flat_to(player).length() < 4.0
 	if can_get_up:
 		_start_getup()
 
