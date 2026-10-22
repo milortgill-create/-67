@@ -1,19 +1,21 @@
 extends Node3D
 ## Тестовый полигон («песочница»): закрытый бетонный зал, ящики, бочки, кирпичи,
-## доски, бутылки, два манекена и смартфон в руках игрока.
+## доски, бутылки, два манекена (пассивный и агрессивный) и смартфон в руках игрока.
 ## Всё строится в коде, чтобы сцена оставалась простой и читаемой.
 
 const HALF := 15.0          # половина размера зала (стены на ±15 м)
 const WALL_H := 6.0
+const PLAYER_START := Vector3(0, 0, 8.0)
 
 var player: Player
 var touch: TouchControls
-var props: Array[RigidBody3D] = []
+var props: Array[PropBody] = []
 var mannequins: Array[Mannequin] = []
-var phone: RigidBody3D
+var phone: PropBody
 
 var _prompt: Label
 var _message: Label
+var _hp_label: Label
 var _msg_timer := 0.0
 var _action_btn: Button
 var _reset_btn: Button
@@ -25,8 +27,8 @@ func _ready() -> void:
 	_build_environment()
 	_build_arena()
 	_build_player()
-	_build_props()
 	_build_hud()
+	_build_scene_objects()
 	_show_message("Полигон готов. Наведите прицел и нажмите ДЕЙСТВИЕ.")
 
 
@@ -44,7 +46,7 @@ func _build_environment() -> void:
 	we.environment = env
 	add_child(we)
 
-	# «дневной свет» через верхний проём; потолок не отбрасывает тень (см. _build_arena)
+	# «дневной свет» через верхний проём; потолок не отбрасывает тень
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-65, 35, 0)
 	sun.light_energy = 0.5
@@ -144,46 +146,40 @@ func _build_arena() -> void:
 	_visual_box(Vector3(5, 0.005, 7.5), Vector3(0.1, 0.01, 5), yellow)
 
 
-# ---------------------------------------------------------------- игрок и предметы
+# ---------------------------------------------------------------- игрок
 
 func _build_player() -> void:
 	player = Player.new()
 	player.name = "Player"
-	player.position = Vector3(0, 0.0, 8.0)
+	player.spawn_position = PLAYER_START
+	player.position = PLAYER_START
 	add_child(player)
 	player.message.connect(_show_message)
+	player.hp_changed.connect(_on_hp_changed)
 
 
-func _spawn(body: RigidBody3D, pos: Vector3, yaw: float = 0.0) -> RigidBody3D:
+# ---------------------------------------------------------------- предметы и манекены
+
+func _spawn(body: PropBody, pos: Vector3, yaw: float = 0.0) -> PropBody:
 	add_child(body)
 	body.position = pos
 	body.rotation.y = yaw
-	body.set_meta("init_xf", body.transform)
-	body.body_entered.connect(_on_prop_contact.bind(body))
 	props.append(body)
 	return body
 
 
-func _on_prop_contact(other: Node, prop: RigidBody3D) -> void:
-	## Летящий предмет, попавший в игрока, толкает камеру.
-	if other.has_method("take_hit"):
-		var spd := prop.linear_velocity.length()
-		if spd > 2.0:
-			other.take_hit(spd)
-
-
-func _build_props() -> void:
-	# деревянные ящики
+func _build_scene_objects() -> void:
+	# деревянные ящики (обычные 15 кг и малые)
 	_spawn(PropFactory.make_crate(), Vector3(-6.0, 0.41, -4.0))
 	_spawn(PropFactory.make_crate(), Vector3(-4.9, 0.41, -4.0))
 	_spawn(PropFactory.make_crate(), Vector3(-5.45, 0.41, -5.1))
 	_spawn(PropFactory.make_crate(), Vector3(-5.45, 1.22, -4.5), 0.2)
 	_spawn(PropFactory.make_crate(), Vector3(-9.0, 0.41, -2.0))
 	_spawn(PropFactory.make_crate(), Vector3(-9.0, 0.41, -3.1))
-	_spawn(PropFactory.make_crate(0.6), Vector3(7.0, 0.31, -7.0))
-	_spawn(PropFactory.make_crate(0.6), Vector3(7.8, 0.31, -7.0))
+	_spawn(PropFactory.make_crate(0.6, 6.0), Vector3(7.0, 0.31, -7.0))
+	_spawn(PropFactory.make_crate(0.6, 6.0), Vector3(7.8, 0.31, -7.0))
 
-	# металлические бочки
+	# металлические бочки (40 кг)
 	_spawn(PropFactory.make_barrel(), Vector3(3.0, 0.485, -5.0))
 	_spawn(PropFactory.make_barrel(), Vector3(4.3, 0.485, -5.0))
 	_spawn(PropFactory.make_barrel(), Vector3(3.65, 0.485, -6.2))
@@ -200,46 +196,54 @@ func _build_props() -> void:
 	for k in 6:
 		_spawn(PropFactory.make_brick(), Vector3(8.0 + k * 0.3, 0.04, 4.0 + (k % 2) * 0.2), 0.3 * k)
 
-	# доски
+	# доски (3 кг)
 	_spawn(PropFactory.make_board(), Vector3(5.0, 0.02, 2.0), 0.4)
 	_spawn(PropFactory.make_board(), Vector3(5.4, 0.02, 2.9), 0.3)
 	_spawn(PropFactory.make_board(1.4), Vector3(-8.0, 0.02, 6.0), -0.8)
 	_spawn(PropFactory.make_board(1.4), Vector3(-8.4, 0.02, 6.2), -0.6)
 
-	# пустые бутылки: два ряда на полу и россыпь
+	# пустые бутылки (0.5 кг): два ряда на полу и россыпь
 	for i in 5:
 		_spawn(PropFactory.make_bottle(), Vector3(4.0 + i * 0.35, 0.125, -2.0))
 		_spawn(PropFactory.make_bottle(), Vector3(4.17 + i * 0.35, 0.125, -2.35))
 	for p in [Vector3(-2, 0.125, -1.5), Vector3(-1.5, 0.125, -2.2), Vector3(-2.5, 0.125, -2.8),
-			Vector3(-1.0, 0.125, -3.5), Vector3(0.2, 0.125, -1.2), Vector3(2.0, 0.125, -1.0)]:
-		_spawn(PropFactory.make_bottle(), p, randf() * TAU)
+			Vector3(-1.0, 0.125, -3.5), Vector3(0.2, 0.125, -1.2), Vector3(-0.5, 0.125, -0.6)]:
+		_spawn(PropFactory.make_bottle(), p, 1.3 * p.x)
 
-	# манекены
-	for pos in [Vector3(-3.0, 0.0, -11.0), Vector3(3.0, 0.0, -11.0)]:
-		var m := Mannequin.new()
-		m.name = "Mannequin"
-		m.position = pos
-		add_child(m)
-		mannequins.append(m)
+	# манекены: №1 — пассивный (встаёт при приближении), №2 — агрессивный (бьёт)
+	var passive := Mannequin.new()
+	passive.name = "MannequinPassive"
+	passive.kind = Mannequin.PASSIVE
+	passive.position = Vector3(-3.0, 0.0, -9.0)
+	add_child(passive)
+	mannequins.append(passive)
+
+	var aggressive := Mannequin.new()
+	aggressive.name = "MannequinAggressive"
+	aggressive.kind = Mannequin.AGGRESSIVE
+	aggressive.position = Vector3(3.0, 0.0, -9.0)
+	add_child(aggressive)
+	mannequins.append(aggressive)
 
 	# смартфон — сразу в руках игрока
-	phone = PropFactory.make_phone()
-	_spawn(phone, Vector3(0, 1.2, 0))
+	phone = _spawn(PropFactory.make_phone(), Vector3(0, 1.2, 0))
 	player.grab_body(phone)
 
 
 func _reset_scene() -> void:
+	## Полная перестройка объектов: разбитое и сбитое возвращается в исходное состояние.
 	player.release_held()
 	for p in props:
-		p.freeze = false
-		p.linear_velocity = Vector3.ZERO
-		p.angular_velocity = Vector3.ZERO
-		p.collision_layer = 1
-		p.collision_mask = 1
-		p.transform = p.get_meta("init_xf")
+		if is_instance_valid(p):
+			p.queue_free()
 	for m in mannequins:
-		m.reset_pose()
-	player.grab_body(phone)
+		if is_instance_valid(m):
+			m.queue_free()
+	props.clear()
+	mannequins.clear()
+	player.global_position = PLAYER_START
+	player.velocity = Vector3.ZERO
+	_build_scene_objects()
 	_show_message("Сцена сброшена.")
 
 
@@ -292,6 +296,15 @@ func _build_hud() -> void:
 	_message.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(_message)
 
+	# здоровье
+	_hp_label = Label.new()
+	_hp_label.position = Vector2(20, 120)
+	_hp_label.add_theme_font_size_override("font_size", 22)
+	_hp_label.add_theme_color_override("font_color", Color(1.0, 0.45, 0.4))
+	_hp_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(_hp_label)
+	_on_hp_changed(player.hp)
+
 	# подсказка по управлению
 	var info := Label.new()
 	info.text = "Стик слева — ходьба · свайп справа — камера\nДЕЙСТВИЕ — взять / бросить / ударить\nПК: WASD, мышь (ПКМ — камера), E/Space/ЛКМ — действие"
@@ -342,6 +355,10 @@ func _make_button(text: String, color: Color, corner: float) -> Button:
 func _show_message(text: String) -> void:
 	_message.text = text
 	_msg_timer = 2.0
+
+
+func _on_hp_changed(value: int) -> void:
+	_hp_label.text = "HP: %d / %d" % [value, Player.MAX_HP]
 
 
 func _process(delta: float) -> void:

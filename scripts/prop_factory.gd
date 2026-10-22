@@ -1,8 +1,7 @@
 class_name PropFactory
 extends RefCounted
-## Фабрика физических предметов полигона.
-## Каждый предмет — RigidBody3D с коллизией, мешем и метаданными:
-##   pickable (можно взять), title (название для подсказки), hold_radius (для позиции в руке).
+## Фабрика физических предметов. Массы — реалистичные:
+## бутылка 0.5 кг, доска 3 кг, ящик 15 кг, металлическая бочка 40 кг.
 
 
 static func material(color: Color, rough: float = 0.8, metal: float = 0.0) -> StandardMaterial3D:
@@ -13,19 +12,17 @@ static func material(color: Color, rough: float = 0.8, metal: float = 0.0) -> St
 	return m
 
 
-static func make_body(mass: float, title: String, hold_radius: float) -> RigidBody3D:
-	var b := RigidBody3D.new()
+static func make(mass: float, title: String, hold_radius: float, breakable: int = 0, break_speed: float = 5.0) -> PropBody:
+	var b := PropBody.new()
 	b.mass = mass
-	b.continuous_cd = true  # непрерывное обнаружение столкновений: не проваливаться сквозь пол
-	b.contact_monitor = true
-	b.max_contacts_reported = 4
-	b.set_meta("pickable", true)
-	b.set_meta("title", title)
-	b.set_meta("hold_radius", hold_radius)
+	b.title = title
+	b.hold_radius = hold_radius
+	b.breakable = breakable
+	b.break_speed = break_speed
 	return b
 
 
-static func add_shape(b: RigidBody3D, mesh: Mesh, shape: Shape3D, mat: Material) -> void:
+static func add_shape(b: PropBody, mesh: Mesh, shape: Shape3D, mat: Material) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.material_override = mat
@@ -35,14 +32,14 @@ static func add_shape(b: RigidBody3D, mesh: Mesh, shape: Shape3D, mat: Material)
 	b.add_child(cs)
 
 
-static func make_crate(size: float = 0.8) -> RigidBody3D:
-	var b := make_body(15.0, "деревянный ящик", size * 0.87)
+static func make_crate(size: float = 0.8, mass: float = 15.0) -> PropBody:
+	var b := make(mass, "деревянный ящик", size * 0.87, PropBody.WOOD, 6.0)
 	var bm := BoxMesh.new()
 	bm.size = Vector3.ONE * size
 	var bs := BoxShape3D.new()
 	bs.size = bm.size
 	add_shape(b, bm, bs, material(Color(0.62, 0.44, 0.24), 0.85))
-	# деревянные рейки для вида
+	# деревянные рейки и углы для вида
 	for z_side in [-1.0, 1.0]:
 		var rail := MeshInstance3D.new()
 		var rm := BoxMesh.new()
@@ -54,8 +51,8 @@ static func make_crate(size: float = 0.8) -> RigidBody3D:
 	return b
 
 
-static func make_barrel() -> RigidBody3D:
-	var b := make_body(25.0, "металлическая бочка", 0.55)
+static func make_barrel() -> PropBody:
+	var b := make(40.0, "металлическая бочка", 0.55)
 	var cm := CylinderMesh.new()
 	cm.top_radius = 0.3
 	cm.bottom_radius = 0.3
@@ -67,8 +64,8 @@ static func make_barrel() -> RigidBody3D:
 	return b
 
 
-static func make_brick() -> RigidBody3D:
-	var b := make_body(2.5, "кирпич", 0.13)
+static func make_brick() -> PropBody:
+	var b := make(2.5, "кирпич", 0.13)
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.23, 0.065, 0.11)
 	var bs := BoxShape3D.new()
@@ -77,8 +74,8 @@ static func make_brick() -> RigidBody3D:
 	return b
 
 
-static func make_board(length: float = 1.8) -> RigidBody3D:
-	var b := make_body(3.0, "доска", length * 0.5)
+static func make_board(length: float = 1.8) -> PropBody:
+	var b := make(3.0, "доска", length * 0.5)
 	var bm := BoxMesh.new()
 	bm.size = Vector3(length, 0.03, 0.2)
 	var bs := BoxShape3D.new()
@@ -87,8 +84,8 @@ static func make_board(length: float = 1.8) -> RigidBody3D:
 	return b
 
 
-static func make_bottle() -> RigidBody3D:
-	var b := make_body(0.35, "пустая бутылка", 0.15)
+static func make_bottle() -> PropBody:
+	var b := make(0.5, "пустая бутылка", 0.15, PropBody.GLASS, 3.0)
 	var cm := CylinderMesh.new()
 	cm.top_radius = 0.033
 	cm.bottom_radius = 0.033
@@ -102,9 +99,9 @@ static func make_bottle() -> RigidBody3D:
 	return b
 
 
-static func make_phone() -> RigidBody3D:
-	## Смартфон: тонкий корпус 7.5 x 15.5 x 0.9 см, светящийся экран сверху.
-	var b := make_body(0.19, "смартфон", 0.1)
+static func make_phone() -> PropBody:
+	## Смартфон: 7.5 x 15.5 x 0.9 см, светящийся экран сверху.
+	var b := make(0.19, "смартфон", 0.1)
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.075, 0.009, 0.155)
 	var bs := BoxShape3D.new()
