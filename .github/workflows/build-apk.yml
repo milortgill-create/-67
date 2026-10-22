@@ -96,7 +96,11 @@ jobs:
           export GODOT_ANDROID_KEYSTORE_DEBUG_USER="androiddebugkey"
           export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="android"
           mkdir -p build
-          "$HOME/godot/godot" --headless --path . --export-debug "Android" "build/$APK_NAME"
+          if ! "$HOME/godot/godot" --headless --path . --export-debug "Android" "build/$APK_NAME" > export.log 2>&1; then
+            grep -v "^$" export.log | tail -n 25 | while IFS= read -r l; do echo "::error title=Export log::${l:0:900}"; done
+            exit 1
+          fi
+          grep -iE "error|fail" export.log | head -n 5 || true
           ls -la build
 
       - name: Verify APK
