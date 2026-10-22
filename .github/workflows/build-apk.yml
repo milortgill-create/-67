@@ -67,6 +67,16 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+      - name: Import project (builds script class cache)
+        run: |
+          set -uo pipefail
+          "$HOME/godot/godot" --headless --path . --import > import.log 2>&1 || true
+          tail -n 20 import.log
+          if grep -E "SCRIPT ERROR|Parse Error|Compile Error" import.log > errs_import.log; then
+            head -n 10 errs_import.log | while IFS= read -r l; do echo "::error title=Import error::${l}"; done
+            exit 1
+          fi
+
       - name: Smoke-test scripts (headless run)
         run: |
           set -uo pipefail
@@ -85,7 +95,6 @@ jobs:
           export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$HOME/.android/debug.keystore"
           export GODOT_ANDROID_KEYSTORE_DEBUG_USER="androiddebugkey"
           export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="android"
-          "$HOME/godot/godot" --headless --path . --import || true
           mkdir -p build
           "$HOME/godot/godot" --headless --path . --export-debug "Android" "build/$APK_NAME"
           ls -la build

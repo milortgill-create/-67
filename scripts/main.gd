@@ -125,7 +125,7 @@ func _visual_box(pos: Vector3, size: Vector3, color: Color) -> void:
 
 
 func _build_arena() -> void:
-	var plaster := PropFactory.material(Color(0.8, 0.79, 0.76), 0.9)
+	var plaster: StandardMaterial3D = PropFactory.material(Color(0.8, 0.79, 0.76), 0.9)
 	# пол: толстая плита, верхняя грань на y = 0
 	_static_box(Vector3(0, -0.5, 0), Vector3(32, 1, 32), _concrete)
 	# стены
