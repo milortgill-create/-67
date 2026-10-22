@@ -14,6 +14,9 @@ var hold_radius := 0.2
 var breakable := NONE
 var break_speed := 5.0
 var is_held := false
+var item_kind := ""      # ключ для рюкзака и спавна (см. PropFactory.make_by_kind)
+var desc := ""           # описание для таблички в рюкзаке
+var bulky := false       # громоздкое: в рюкзак не помещается
 
 var _prev_speed := 0.0
 var _broken := false

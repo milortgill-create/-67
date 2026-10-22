@@ -294,6 +294,11 @@ func _apply_pose(phase: float, amp: float, punch: float) -> void:
 		var f := _flinch_t / FLINCH_TIME
 		if _flinch_part == "Head" or _flinch_part == "Torso":
 			p["lean"] = float(p["lean"]) + 0.35 * f
+		if _flinch_part == "Head":
+			# удар в голову — обе руки закрывают лицо
+			for sd in ["L", "R"]:
+				p["sh" + sd] = -1.5 * f
+				p["el" + sd] = -2.0 * f
 		if _flinch_part.begins_with("Arm") or _flinch_part.begins_with("Fore"):
 			# хватается за место удара: рука поднимается к голове
 			var side := "L" if _flinch_part.ends_with("L") else "R"

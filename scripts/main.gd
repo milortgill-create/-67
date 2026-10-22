@@ -19,6 +19,9 @@ var _hp_label: Label
 var _msg_timer := 0.0
 var _action_btn: Button
 var _reset_btn: Button
+var _backpack_btn: Button
+var body_icon: BodyIcon
+var backpack: BackpackUI
 var _concrete: Material
 
 
@@ -243,8 +246,7 @@ func _reset_scene() -> void:
 			m.queue_free()
 	props.clear()
 	mannequins.clear()
-	player.global_position = PLAYER_START
-	player.velocity = Vector3.ZERO
+	player.reset_state()
 	_build_scene_objects()
 	_show_message("Сцена сброшена.")
 
@@ -339,6 +341,37 @@ func _build_hud() -> void:
 	_reset_btn.pressed.connect(_reset_scene)
 	layer.add_child(_reset_btn)
 
+	# иконка тела с подсветкой травм (левый нижний угол)
+	body_icon = BodyIcon.new()
+	body_icon.anchor_top = 1.0
+	body_icon.anchor_bottom = 1.0
+	body_icon.offset_left = 20.0
+	body_icon.offset_top = -200.0
+	body_icon.offset_right = 140.0
+	body_icon.offset_bottom = -20.0
+	layer.add_child(body_icon)
+	player.injuries_changed.connect(body_icon.set_levels)
+	body_icon.set_levels(player.injuries)
+
+	# кнопка рюкзака (справа, над ДЕЙСТВИЕ)
+	_backpack_btn = _make_button("РЮКЗАК", Color(0.35, 0.5, 0.25, 0.65), 120.0)
+	_backpack_btn.anchor_left = 1.0
+	_backpack_btn.anchor_right = 1.0
+	_backpack_btn.anchor_top = 1.0
+	_backpack_btn.anchor_bottom = 1.0
+	_backpack_btn.offset_left = -240.0
+	_backpack_btn.offset_right = -40.0
+	_backpack_btn.offset_top = -330.0
+	_backpack_btn.offset_bottom = -260.0
+	_backpack_btn.pressed.connect(_toggle_backpack)
+	layer.add_child(_backpack_btn)
+
+	# окно рюкзака (поверх всего, скрыто по умолчанию)
+	backpack = BackpackUI.new()
+	backpack.take_out.connect(_take_out)
+	backpack.store_held.connect(_store_held)
+	layer.add_child(backpack)
+
 
 func _make_button(text: String, color: Color, corner: float) -> Button:
 	var b := Button.new()
@@ -354,6 +387,40 @@ func _make_button(text: String, color: Color, corner: float) -> Button:
 	return b
 
 
+func _toggle_backpack() -> void:
+	if backpack.visible:
+		backpack.close_panel()
+	else:
+		backpack.open(player.items, _held_title())
+
+
+func _held_title() -> String:
+	return player.held.title if player.held != null else ""
+
+
+func _refresh_backpack() -> void:
+	backpack.refresh(player.items, _held_title())
+
+
+func _take_out(index: int) -> void:
+	## Достать предмет из рюкзака: появляется перед игроком.
+	var it: Dictionary = player.take_item(index)
+	if it.is_empty():
+		return
+	var body := PropFactory.make_by_kind(str(it["kind"]))
+	var fwd := -player.camera.global_basis.z
+	fwd.y = 0.0
+	var pos := player.global_position + fwd.normalized() * 1.0 + Vector3.UP * 1.2
+	_spawn(body, pos, player.rotation.y)
+	_refresh_backpack()
+	_show_message("Достали: " + str(it["title"]))
+
+
+func _store_held() -> void:
+	player.store_held()
+	_refresh_backpack()
+
+
 func _show_message(text: String) -> void:
 	_message.text = text
 	_msg_timer = 2.0
@@ -364,7 +431,8 @@ func _on_hp_changed(value: int) -> void:
 
 
 func _process(delta: float) -> void:
-	touch.exclude_rects = [_action_btn.get_global_rect(), _reset_btn.get_global_rect()]
+	touch.exclude_rects = [_action_btn.get_global_rect(), _reset_btn.get_global_rect(), _backpack_btn.get_global_rect()]
+	player.input_enabled = not backpack.visible
 	_prompt.text = player.get_aim_hint()
 	if _msg_timer > 0.0:
 		_msg_timer -= delta
@@ -387,12 +455,26 @@ func _run_selftest() -> void:
 	player.on_action()  # бросок
 	await get_tree().create_timer(0.5).timeout
 
-	print("SELFTEST: удар по пассивному манекену")
+	print("SELFTEST: лёгкий удар по пассивному манекену")
 	player.global_position = Vector3(-3.0, 0, -6.0)
-	passive.punch(passive.parts[1], Vector3(0, 0, 40))
+	passive.punch(passive.parts[0], Vector3(0, 0, 40))
+	await get_tree().create_timer(0.5).timeout
+	print("SELFTEST: после лёгкого удара state=%d (0=стоит)" % passive.state)
+
+	print("SELFTEST: сильный удар по пассивному манекену")
+	passive.punch(passive.parts[1], Vector3(0, 0, 150))
 	await get_tree().create_timer(3.0).timeout
 	await get_tree().create_timer(2.0).timeout
 	print("SELFTEST: пассивный state=%d (0=стоит)" % passive.state)
+
+	print("SELFTEST: рюкзак — положить и достать")
+	var bottle := PropFactory.make_bottle()
+	_spawn(bottle, player.global_position + Vector3(0, 1.0, -1.0))
+	player.grab_body(bottle)
+	player.store_held()
+	print("SELFTEST: в рюкзаке предметов=%d" % player.items.size())
+	_take_out(0)
+	print("SELFTEST: после достать предметов=%d" % player.items.size())
 
 	print("SELFTEST: агрессивный манекен — бой")
 	player.global_position = Vector3(3.0, 0, -4.5)
@@ -400,7 +482,7 @@ func _run_selftest() -> void:
 	print("SELFTEST: агрессивный state=%d, hp=%d" % [aggressive.state, player.hp])
 	print("SELFTEST: бьём агрессивного манекена")
 	player.global_position = Vector3(3.0, 0, -4.5)
-	aggressive.punch(aggressive.parts[1], Vector3(0, 0, 40))
+	aggressive.punch(aggressive.parts[1], Vector3(0, 0, 150))
 	await get_tree().create_timer(6.0).timeout
 	print("SELFTEST: агрессивный после встал, state=%d" % aggressive.state)
 
