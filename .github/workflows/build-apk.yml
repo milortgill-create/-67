@@ -97,7 +97,8 @@ jobs:
           export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="android"
           mkdir -p build
           if ! "$HOME/godot/godot" --headless --path . --export-debug "Android" "build/$APK_NAME" > export.log 2>&1; then
-            grep -v "^$" export.log | tail -n 25 | while IFS= read -r l; do echo "::error title=Export log::${l:0:900}"; done
+            sed -E 's/\x1b\[[0-9;]*m//g' export.log | grep -v "first_scan\|\[ *[0-9]*% \]" | grep -iE "error|fail|android|sdk|template|keystore|java|export|warn|not|missing|invalid" | head -n 10 | while IFS= read -r l; do echo "::error title=Export log::${l:0:900}"; done
+            sed -E 's/\x1b\[[0-9;]*m//g' export.log | tail -n 6 | tr '\n' '|' | cut -c1-900 | while IFS= read -r l; do echo "::error title=Export tail::$l"; done
             exit 1
           fi
           grep -iE "error|fail" export.log | head -n 5 || true
