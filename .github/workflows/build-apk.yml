@@ -1,0 +1,114 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, arena/80f37bfa-67]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_RELEASE: "4.7.2-stable"
+  GODOT_VERSION: "4.7.2"
+  APK_NAME: PhysicsSandbox67.apk
+  RELEASE_TAG: apk-latest
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Download Godot editor and export templates
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/godot" && cd "$HOME/godot"
+          BASE="https://github.com/godotengine/godot/releases/download/${GODOT_RELEASE}"
+          curl -fsSL --retry 5 -o godot.zip "$BASE/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          curl -fsSL --retry 5 -o templates.tpz "$BASE/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_RELEASE}_linux.x86_64" godot
+          chmod +x godot
+          unzip -q templates.tpz -d tpz
+          TDIR="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$TDIR"
+          cp -r tpz/templates/. "$TDIR/"
+          ls "$TDIR" | head -50
+          "$HOME/godot/godot" --version
+
+      - name: Configure Android SDK paths and debug keystore
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "Android SDK: $SDK"
+          ls "$SDK/build-tools" || true
+          mkdir -p "$HOME/.config/godot" "$HOME/.android"
+          printf '%s\n' \
+            '[gd_resource type="EditorSettings" format=3]' \
+            '' \
+            '[resource]' \
+            "export/android/android_sdk_path = \"$SDK\"" \
+            "export/android/java_sdk_path = \"$JAVA_HOME\"" \
+            "export/android/debug_keystore = \"$HOME/.android/debug.keystore\"" \
+            'export/android/debug_keystore_user = "androiddebugkey"' \
+            'export/android/debug_keystore_pass = "android"' \
+            > "$HOME/.config/godot/editor_settings-${GODOT_VERSION%.*}.tres"
+          "$JAVA_HOME/bin/keytool" -genkeypair -keystore "$HOME/.android/debug.keystore" \
+            -storepass android -alias androiddebugkey -keypass android \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+
+      - name: Smoke-test scripts (headless run)
+        run: |
+          set -uo pipefail
+          timeout 120 "$HOME/godot/godot" --headless --path . --quit-after 600 > smoke.log 2>&1 || true
+          cat smoke.log | tail -n 60
+          if grep -E "SCRIPT ERROR|Parse Error|Compile Error|Failed to load script" smoke.log; then
+            echo "Script errors found above"; exit 1
+          fi
+
+      - name: Import project and export debug APK
+        run: |
+          set -euo pipefail
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$HOME/.android/debug.keystore"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_USER="androiddebugkey"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD="android"
+          "$HOME/godot/godot" --headless --path . --import || true
+          mkdir -p build
+          "$HOME/godot/godot" --headless --path . --export-debug "Android" "build/$APK_NAME"
+          ls -la build
+
+      - name: Verify APK
+        run: |
+          set -euo pipefail
+          BT="$(ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/* | sort -V | tail -1)"
+          "$BT/aapt" dump badging "build/$APK_NAME" | head -n 8
+          "$BT/apksigner" verify --verbose "build/$APK_NAME" || true
+          unzip -l "build/$APK_NAME" | tail -n 1
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhysicsSandbox67-apk
+          path: build/${{ env.APK_NAME }}
+
+      - name: Publish APK to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" \
+              --title "Physics Sandbox 67 — APK (последняя сборка)" \
+              --notes "Автоматическая сборка Android APK (Godot ${GODOT_VERSION}). Обновляется при каждом пуше."
+          fi
+          gh release upload "$RELEASE_TAG" "build/$APK_NAME" --clobber
