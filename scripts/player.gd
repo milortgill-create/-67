@@ -587,13 +587,17 @@ func _update_held() -> void:
 
 func _update_exemptions() -> void:
 	## Коллизия с игроком отключена, пока предмет рядом (в руках или только что брошен).
-	for b in _exempt.duplicate():
+	## Массив перестраивается заново: разбитые (freed) предметы просто выпадают из списка.
+	var keep: Array[PropBody] = []
+	for b in _exempt:
 		if not is_instance_valid(b):
-			_exempt.erase(b)
 			continue
 		if b == held:
+			keep.append(b)
 			continue
 		var d := Vector2(b.global_position.x - global_position.x, b.global_position.z - global_position.z).length()
 		if d > EXEMPT_DIST:
 			b.remove_collision_exception_with(self)
-			_exempt.erase(b)
+		else:
+			keep.append(b)
+	_exempt = keep
