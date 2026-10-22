@@ -30,6 +30,8 @@ func _ready() -> void:
 	_build_hud()
 	_build_scene_objects()
 	_show_message("Полигон готов. Наведите прицел и нажмите ДЕЙСТВИЕ.")
+	if OS.get_cmdline_user_args().has("--selftest"):
+		_run_selftest()
 
 
 # ---------------------------------------------------------------- окружение
@@ -368,3 +370,39 @@ func _process(delta: float) -> void:
 		_msg_timer -= delta
 		if _msg_timer <= 0.0:
 			_message.text = ""
+
+
+# ---------------------------------------------------------------- самопроверка (CI)
+
+func _run_selftest() -> void:
+	## Запуск: godot --headless --path . -- --selftest
+	## Прогоняет все игровые сценарии: захват, бросок, удар, ragdoll, встать, бой, сброс.
+	await get_tree().create_timer(1.0).timeout
+	var passive: Mannequin = mannequins[0]
+	var aggressive: Mannequin = mannequins[1]
+	print("SELFTEST: захват предмета")
+	player.global_position = Vector3(0, 0, -2.0)
+	player.grab_body(props[0])
+	await get_tree().create_timer(0.5).timeout
+	player.on_action()  # бросок
+	await get_tree().create_timer(0.5).timeout
+
+	print("SELFTEST: удар по пассивному манекену")
+	player.global_position = Vector3(-3.0, 0, -6.0)
+	passive.punch(passive.parts[1], Vector3(0, 0, 40))
+	await get_tree().create_timer(3.0).timeout
+	print("SELFTEST: пассивный state=%d" % passive.state)
+
+	print("SELFTEST: агрессивный манекен — бой")
+	player.global_position = Vector3(3.0, 0, -4.5)
+	await get_tree().create_timer(4.0).timeout
+	print("SELFTEST: агрессивный state=%d, hp=%d" % [aggressive.state, player.hp])
+	aggressive.punch(aggressive.parts[1], Vector3(0, 0, 40))
+	await get_tree().create_timer(6.0).timeout
+	print("SELFTEST: агрессивный после встал, state=%d" % aggressive.state)
+
+	print("SELFTEST: сброс")
+	_reset_scene()
+	await get_tree().create_timer(1.0).timeout
+	print("SELFTEST DONE")
+	get_tree().quit(0)

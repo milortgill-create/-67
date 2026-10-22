@@ -89,6 +89,19 @@ jobs:
             exit 1
           fi
 
+      - name: Gameplay self-test (grab, throw, punch, ragdoll, get up, reset)
+        run: |
+          set -uo pipefail
+          timeout 180 "$HOME/godot/godot" --headless --path . -- --selftest > selftest.log 2>&1
+          code=$?
+          grep -E "SELFTEST" selftest.log || true
+          if [ $code -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error|Invalid|Cannot|ERROR:" selftest.log > selferr.log; then
+            head -n 10 selferr.log 2>/dev/null | while IFS= read -r l; do echo "::error title=Self-test error::${l}"; done
+            echo "::error title=Self-test log tail::$(tail -n 40 selftest.log | tr '\n' '|' | cut -c1-3500)"
+            exit 1
+          fi
+          grep -q "SELFTEST DONE" selftest.log
+
       - name: Import project and export debug APK
         run: |
           set -euo pipefail
