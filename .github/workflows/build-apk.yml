@@ -94,7 +94,7 @@ jobs:
           set -uo pipefail
           timeout 180 "$HOME/godot/godot" --headless --path . -- --selftest > selftest.log 2>&1
           code=$?
-          grep -E "SELFTEST" selftest.log || true
+          grep -E "SELFTEST" selftest.log | while IFS= read -r l; do echo "::notice title=Self-test::${l}"; done || true
           if [ $code -ne 0 ] || grep -E "SCRIPT ERROR|Parse Error|Invalid|Cannot|ERROR:" selftest.log > selferr.log; then
             head -n 10 selferr.log 2>/dev/null | while IFS= read -r l; do echo "::error title=Self-test error::${l}"; done
             echo "::error title=Self-test log tail::$(tail -n 40 selftest.log | tr '\n' '|' | cut -c1-3500)"
