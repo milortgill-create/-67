@@ -391,12 +391,15 @@ func _run_selftest() -> void:
 	player.global_position = Vector3(-3.0, 0, -6.0)
 	passive.punch(passive.parts[1], Vector3(0, 0, 40))
 	await get_tree().create_timer(3.0).timeout
-	print("SELFTEST: пассивный state=%d" % passive.state)
+	await get_tree().create_timer(2.0).timeout
+	print("SELFTEST: пассивный state=%d (0=стоит)" % passive.state)
 
 	print("SELFTEST: агрессивный манекен — бой")
 	player.global_position = Vector3(3.0, 0, -4.5)
-	await get_tree().create_timer(4.0).timeout
+	await get_tree().create_timer(9.0).timeout
 	print("SELFTEST: агрессивный state=%d, hp=%d" % [aggressive.state, player.hp])
+	print("SELFTEST: бьём агрессивного манекена")
+	player.global_position = Vector3(3.0, 0, -4.5)
 	aggressive.punch(aggressive.parts[1], Vector3(0, 0, 40))
 	await get_tree().create_timer(6.0).timeout
 	print("SELFTEST: агрессивный после встал, state=%d" % aggressive.state)
