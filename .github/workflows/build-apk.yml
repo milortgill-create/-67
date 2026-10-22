@@ -72,8 +72,11 @@ jobs:
           set -uo pipefail
           timeout 120 "$HOME/godot/godot" --headless --path . --quit-after 600 > smoke.log 2>&1 || true
           cat smoke.log | tail -n 60
-          if grep -E "SCRIPT ERROR|Parse Error|Compile Error|Failed to load script" smoke.log; then
-            echo "Script errors found above"; exit 1
+          if grep -E "SCRIPT ERROR|Parse Error|Compile Error|Failed to load script|ERROR:" smoke.log > errs.log; then
+            # Видно в аннотациях проверки (логи Actions недоступны извне)
+            head -n 10 errs.log | while IFS= read -r l; do echo "::error title=Godot error::${l}"; done
+            echo "::error title=Smoke log tail::$(tail -n 40 smoke.log | tr '\n' '|' | cut -c1-3500)"
+            exit 1
           fi
 
       - name: Import project and export debug APK
